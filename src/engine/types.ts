@@ -94,6 +94,8 @@ export type TrainerSettings = {
   decisionTimerSec: number
   decisionTimerEnabled: boolean
   countCheckEveryNHands: number
+  soundEnabled: boolean
+  autoNextHand: boolean
 }
 
 export type SessionStats = {
@@ -136,4 +138,6 @@ export const DEFAULT_TRAINER: TrainerSettings = {
   decisionTimerSec: 5,
   decisionTimerEnabled: false,
   countCheckEveryNHands: 10,
+  soundEnabled: true,
+  autoNextHand: false,
 }

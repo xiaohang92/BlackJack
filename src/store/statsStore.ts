@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { SessionStats } from '../engine/types'
+import type { HandResult, SessionStats } from '../engine/types'
 
 const empty: SessionStats = {
   handsPlayed: 0,
@@ -18,6 +18,7 @@ type StatsState = SessionStats & {
   lastErrorKind: 'basic' | 'index' | null
   lastErrorMessage: string
   sessionFailed: boolean
+  recentResults: HandResult[]
   recordHandResults: (results: Array<'win' | 'loss' | 'push' | 'blackjack' | 'surrender'>) => void
   recordDecision: (args: {
     isIndex: boolean
@@ -35,6 +36,7 @@ export const useStatsStore = create<StatsState>((set) => ({
   lastErrorKind: null,
   lastErrorMessage: '',
   sessionFailed: false,
+  recentResults: [],
   recordHandResults: (results) =>
     set((s) => {
       let wins = s.wins
@@ -50,6 +52,7 @@ export const useStatsStore = create<StatsState>((set) => ({
         wins,
         losses,
         pushes,
+        recentResults: [...results, ...s.recentResults].slice(0, 12),
       }
     }),
   recordDecision: ({ isIndex, correct, errorKind }) =>
@@ -89,5 +92,6 @@ export const useStatsStore = create<StatsState>((set) => ({
       lastErrorKind: null,
       lastErrorMessage: '',
       sessionFailed: false,
+      recentResults: [],
     }),
 }))

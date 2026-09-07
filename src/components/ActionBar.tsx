@@ -8,6 +8,14 @@ const LABELS: Record<PlayerAction, string> = {
   surrender: 'Surrender',
 }
 
+const KEYS: Record<PlayerAction, string> = {
+  hit: 'H',
+  stand: 'S',
+  double: 'D',
+  split: 'P',
+  surrender: 'R',
+}
+
 type Props = {
   legal: PlayerAction[]
   hint: PlayerAction | null
@@ -43,6 +51,7 @@ export function ActionBar({
           onClick={() => onAction(a)}
         >
           {LABELS[a]}
+          <kbd>{KEYS[a]}</kbd>
         </button>
       ))}
       {showHintButton && (
