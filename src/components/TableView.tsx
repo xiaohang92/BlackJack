@@ -45,7 +45,6 @@ export function FeltTable({
       </div>
 
       <div className="felt-top">
-        <div className="felt-corner" />
         <DealerZone dealer={game.dealer} peeking={peeking} phase={phase} />
         <ShoeView
           remaining={cardsRemaining(game.shoe)}
