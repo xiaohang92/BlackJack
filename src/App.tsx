@@ -43,7 +43,7 @@ const DISTRACTIONS = [
   'Dealer: "Insurance? Anyone?"',
 ]
 
-const INITIAL_DEAL_MS = 220 * 3 + 560
+const INITIAL_DEAL_MS = 320 * 3 + 720
 
 export default function App() {
   const [view, setView] = useState<'table' | 'sim'>('table')
@@ -122,7 +122,7 @@ export default function App() {
     const afterShuffle = () => {
       setShuffling(false)
       placeBet()
-      playDealSequence(4, 0.22)
+      playDealSequence(4, 0.32)
       dealLockUntil.current = Date.now() + INITIAL_DEAL_MS
       window.setTimeout(() => setAnimLock(false), INITIAL_DEAL_MS)
     }
@@ -164,8 +164,9 @@ export default function App() {
       return () => clearTimeout(t)
     }
   }, [
-    game.phase,
+    game.phase.kind,
     game.dealer.holeHidden,
+    game.dealer.cards.length,
     trainer.dealerSpeedMs,
     tickDealer,
     tickResolve,

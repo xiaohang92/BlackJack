@@ -44,12 +44,14 @@ export function FeltTable({
         </p>
       </div>
 
-      <ShoeView
-        remaining={cardsRemaining(game.shoe)}
-        total={totalCards(game.shoe)}
-      />
-
-      <DealerZone dealer={game.dealer} peeking={peeking} phase={phase} />
+      <div className="felt-top">
+        <div className="felt-corner" />
+        <DealerZone dealer={game.dealer} peeking={peeking} phase={phase} />
+        <ShoeView
+          remaining={cardsRemaining(game.shoe)}
+          total={totalCards(game.shoe)}
+        />
+      </div>
 
       {showSpotBet && (
         <div className="bet-circle-wrap">

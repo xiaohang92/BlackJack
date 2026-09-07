@@ -13,7 +13,9 @@ export function ShoeView({ remaining, total }: Props) {
       aria-label={`Shoe, ${decks.toFixed(1)} decks remaining`}
     >
       <div className="shoe-body">
-        <div className="shoe-cards" style={{ height: `${Math.max(8, ratio * 100)}%` }} />
+        <div className="shoe-cards" style={{ width: `${Math.max(18, ratio * 100)}%` }} />
+        <div className="shoe-mouth" />
+        <div className="shoe-peek" />
       </div>
       <div className="shoe-label">{decks.toFixed(1)} decks</div>
     </div>
