@@ -352,7 +352,7 @@ h3 {
 }
 
 .cards-row .card-slot + .card-slot {
-  margin-left: clamp(-32px, -4.2vh, -22px);
+  margin-left: clamp(-20px, -2.4vh, -12px);
 }
 
 .cards-row .card-slot.is-landed:has(.card-orient.is-doubled) {
@@ -361,11 +361,9 @@ h3 {
 }
 
 .card-slot {
-  width: clamp(46px, 6.2vh, 64px);
-  height: clamp(64px, 8.8vh, 90px);
+  width: clamp(48px, 6.4vh, 66px);
+  height: clamp(68px, 9vh, 94px);
   flex-shrink: 0;
-  perspective: 820px;
-  transform-style: preserve-3d;
   translate: 0 0;
   rotate: 0deg;
   scale: 1;
@@ -373,7 +371,6 @@ h3 {
   animation: deal-from-shoe 0.62s cubic-bezier(0.18, 0.78, 0.22, 1) both;
   animation-delay: calc(var(--deal-i, 0) * 0.32s);
   z-index: 2;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4));
 }
 
 .card-slot.is-landed {
@@ -387,13 +384,30 @@ h3 {
 .card-orient {
   width: 100%;
   height: 100%;
+  position: relative;
   rotate: 0deg;
-  transform-style: preserve-3d;
+  scale: 1;
   transition: rotate 0.35s ease;
 }
 
 .card-orient.is-doubled {
   rotate: 90deg;
+}
+
+.card-orient.is-flipping {
+  animation: card-flip-x 0.48s ease-in-out;
+}
+
+@keyframes card-flip-x {
+  0% {
+    scale: 1 1;
+  }
+  48% {
+    scale: 0 1;
+  }
+  100% {
+    scale: 1 1;
+  }
 }
 
 .card-slot.is-peeking {
@@ -408,21 +422,13 @@ h3 {
   width: 100%;
   height: 100%;
   position: relative;
-  transform-style: preserve-3d;
-  transform: rotateY(0deg);
-  transition: transform 0.55s cubic-bezier(0.33, 0.1, 0.2, 1);
-}
-
-.card-flipper.is-down {
-  transform: rotateY(180deg);
 }
 
 .card-face {
   position: absolute;
   inset: 0;
   border-radius: 7px;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.45);
 }
 
 .card-front {
@@ -435,7 +441,6 @@ h3 {
   flex-direction: column;
   justify-content: space-between;
   padding: 0.18rem 0.22rem;
-  transform: rotateY(0deg);
 }
 
 .card-front.red {
@@ -443,7 +448,6 @@ h3 {
 }
 
 .card-back {
-  transform: rotateY(180deg);
   background:
     radial-gradient(circle at 50% 50%, #7a1f2b 0 28%, transparent 29%),
     repeating-linear-gradient(
@@ -454,7 +458,9 @@ h3 {
       #24365c 10px
     );
   border: 2px solid #c9a24a;
-  box-shadow: inset 0 0 0 3px #6b1c28;
+  box-shadow:
+    0 5px 12px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 3px #6b1c28;
 }
 
 .card-front .corner {

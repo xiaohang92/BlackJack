@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import type { Card as CardType } from '../engine/types'
 
 const SUIT_SYM: Record<CardType['suit'], string> = {
@@ -24,13 +24,30 @@ export function CardView({
   peeking = false,
 }: Props) {
   const [landed, setLanded] = useState(false)
+  const [showBack, setShowBack] = useState(faceDown || !card)
+  const [flipping, setFlipping] = useState(false)
   const red = card?.suit === 'hearts' || card?.suit === 'diamonds'
-  const down = faceDown || !card
   const label = !card
     ? 'Face-down card'
-    : down
+    : showBack
       ? 'Face-down card'
       : `${card.rank} of ${card.suit}`
+
+  useEffect(() => {
+    if (faceDown || !card) {
+      setShowBack(true)
+      setFlipping(false)
+      return
+    }
+    if (!showBack) return
+    setFlipping(true)
+    const mid = window.setTimeout(() => setShowBack(false), 220)
+    const done = window.setTimeout(() => setFlipping(false), 480)
+    return () => {
+      window.clearTimeout(mid)
+      window.clearTimeout(done)
+    }
+  }, [faceDown, card, showBack])
 
   return (
     <div
@@ -39,16 +56,21 @@ export function CardView({
       aria-label={label}
       role="img"
       onAnimationEnd={(e) => {
-        if (e.target === e.currentTarget) setLanded(true)
+        if (e.animationName === 'deal-from-shoe' && e.target === e.currentTarget) {
+          setLanded(true)
+        }
       }}
     >
-      <div className={`card-orient ${doubled ? 'is-doubled' : ''}`}>
-        <div className={`card-flipper ${down ? 'is-down' : ''}`}>
-          <div className={`card-face card-front ${red ? 'red' : ''}`}>
-            {card && <CardFace card={card} />}
-          </div>
+      <div
+        className={`card-orient ${doubled ? 'is-doubled' : ''} ${flipping ? 'is-flipping' : ''}`}
+      >
+        {showBack || !card ? (
           <div className="card-face card-back" />
-        </div>
+        ) : (
+          <div className={`card-face card-front ${red ? 'red' : ''}`}>
+            <CardFace card={card} />
+          </div>
+        )}
       </div>
     </div>
   )
