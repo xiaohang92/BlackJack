@@ -13,6 +13,7 @@ type Props = {
   onUndo: () => void
   onClear: () => void
   onRebet: () => void
+  showRecommended?: boolean
 }
 
 const CHIPS = [1, 5, 25, 100, 500]
@@ -30,6 +31,7 @@ export function BettingBar({
   onUndo,
   onClear,
   onRebet,
+  showRecommended = true,
 }: Props) {
   return (
     <div className="bet-row" data-tour="betting">
@@ -72,14 +74,16 @@ export function BettingBar({
         >
           Rebet{lastBet > 0 ? ` $${lastBet}` : ''}
         </button>
-        <button
-          type="button"
-          className="btn"
-          disabled={disabled}
-          onClick={() => onBetChange(Math.min(bankroll, recommended))}
-        >
-          Rec ${recommended}
-        </button>
+        {showRecommended && (
+          <button
+            type="button"
+            className="btn"
+            disabled={disabled}
+            onClick={() => onBetChange(Math.min(bankroll, recommended))}
+          >
+            Rec ${recommended}
+          </button>
+        )}
       </div>
       <div className="bet-amount-wrap">
         <span className="bet-min-max">Min ${minBet}</span>

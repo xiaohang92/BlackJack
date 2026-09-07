@@ -30,6 +30,48 @@ export const useSettingsStore = create<SettingsState>()(
       resetRules: () => set({ rules: VEGAS_DEFAULTS }),
       setTourCompleted: (done) => set({ tourCompleted: done }),
     }),
-    { name: 'bj-settings' },
+    {
+      name: 'bj-settings',
+      version: 3,
+      migrate: (persisted, fromVersion) => {
+        if (typeof persisted !== 'object' || persisted === null) {
+          return persisted
+        }
+        const p = persisted as {
+          rules?: Partial<RulesConfig>
+          trainer?: Partial<TrainerSettings>
+          tourCompleted?: boolean
+        }
+        let trainer = { ...p.trainer }
+        if (fromVersion < 2) {
+          trainer = { ...trainer, countCheckEveryNHands: 0 }
+        }
+        if (fromVersion < 3) {
+          trainer = {
+            ...trainer,
+            tableMood: 'play',
+            soundEnabled: true,
+            cheatSheetOpen: false,
+          }
+        }
+        return { ...p, trainer }
+      },
+      merge: (persistedState, currentState) => {
+        if (typeof persistedState !== 'object' || persistedState === null) {
+          return currentState
+        }
+        const p = persistedState as {
+          rules?: Partial<RulesConfig>
+          trainer?: Partial<TrainerSettings>
+          tourCompleted?: boolean
+        }
+        return {
+          ...currentState,
+          tourCompleted: p.tourCompleted ?? currentState.tourCompleted,
+          rules: { ...currentState.rules, ...p.rules },
+          trainer: { ...currentState.trainer, ...p.trainer },
+        }
+      },
+    },
   ),
 )

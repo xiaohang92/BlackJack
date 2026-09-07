@@ -61,6 +61,18 @@ export function TrainerPanel({ tab, onTabChange }: Props) {
         {tab === 'count' && (
           <div className="panel panel-fill" data-tour="count-panel">
             <div className="count-grid">
+              <div className="count-metric">
+                <span>Round</span>
+                <strong>
+                  {m.shuffleNext ? 'Shuffle' : m.shoeRound}
+                </strong>
+              </div>
+              <div className="count-metric">
+                <span>Cards</span>
+                <strong>
+                  {m.cardsLeft}/{m.cardsTotal}
+                </strong>
+              </div>
               {trainer.showRunningCount && (
                 <div className="count-metric">
                   <span>RC</span>
@@ -91,14 +103,16 @@ export function TrainerPanel({ tab, onTabChange }: Props) {
             {trainer.discardTrayMode && (
               <DiscardTray ratio={m.discardRatio} label="Discards" />
             )}
-            <button
-              type="button"
-              className="btn btn-primary"
-              data-tour="verify-count"
-              onClick={openCountModal}
-            >
-              Verify Count
-            </button>
+            <details className="verify-fold" data-tour="verify-count">
+              <summary>Check count</summary>
+              <button
+                type="button"
+                className="btn"
+                onClick={openCountModal}
+              >
+                Verify
+              </button>
+            </details>
           </div>
         )}
 
@@ -152,6 +166,7 @@ export function TrainerPanel({ tab, onTabChange }: Props) {
                   ['showRunningCount', 'Show RC'],
                   ['showTrueCount', 'Show TC'],
                   ['showDecksRemaining', 'Show decks'],
+                  ['cheatSheetOpen', 'Notes'],
                   ['autoHint', 'Auto-Hint'],
                   ['useKelly', 'Kelly bets'],
                   ['discardTrayMode', 'Discard tray'],
@@ -179,6 +194,22 @@ export function TrainerPanel({ tab, onTabChange }: Props) {
               ))}
             </div>
             <div className="options-fields">
+              <label>
+                Quiz
+                <select
+                  value={trainer.countCheckEveryNHands}
+                  onChange={(e) =>
+                    setTrainer({
+                      countCheckEveryNHands: Number(e.target.value),
+                    })
+                  }
+                >
+                  <option value={0}>Off</option>
+                  <option value={5}>Every 5</option>
+                  <option value={10}>Every 10</option>
+                  <option value={20}>Every 20</option>
+                </select>
+              </label>
               <label>
                 Speed
                 <select

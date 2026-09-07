@@ -458,6 +458,14 @@ function resolvePayouts(state: GameState): GameState {
   }
 }
 
+/** Hands into the current shoe. Resets after the cut card. */
+export function shoeRound(state: GameState): number {
+  if (state.phase.kind === 'handComplete') {
+    return Math.max(1, state.handsSinceShuffle)
+  }
+  return state.handsSinceShuffle + 1
+}
+
 export function getTrueCountTrunc(state: GameState): number {
   return trueCountFloor(state.runningCount, cardsRemaining(state.shoe))
 }

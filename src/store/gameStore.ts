@@ -5,6 +5,7 @@ import {
   getBasicAdvice,
   getTrueCountTrunc,
   reduce,
+  shoeRound,
   type GameEvent,
   type GameState,
 } from '../engine/gameMachine'
@@ -48,6 +49,10 @@ type GameStore = {
     trueCountTrunc: number
     decksRemaining: number
     cardsLeft: number
+    cardsTotal: number
+    shoeDecks: number
+    shoeRound: number
+    shuffleNext: boolean
     discardRatio: number
   }
 }
@@ -212,13 +217,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
   metrics: () => {
     const g = get().game
     const cardsLeft = cardsRemaining(g.shoe)
+    const cardsTotal = totalCards(g.shoe)
     return {
       runningCount: g.runningCount,
       trueCount: trueCount(g.runningCount, cardsLeft),
       trueCountTrunc: getTrueCountTrunc(g),
       decksRemaining: remainingDecksRounded(cardsLeft),
       cardsLeft,
-      discardRatio: cardsDealt(g.shoe) / totalCards(g.shoe),
+      cardsTotal,
+      shoeDecks: g.rules.decks,
+      shoeRound: shoeRound(g),
+      shuffleNext: g.shoe.needsShuffle,
+      discardRatio: cardsDealt(g.shoe) / cardsTotal,
     }
   },
 }))

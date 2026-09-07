@@ -11,6 +11,7 @@ import type { GameState } from '../engine/gameMachine'
 import { CardView } from './CardView'
 import { ChipStack } from './ChipStack'
 import { ShoeView } from './ShoeView'
+import { dealerDealIndex, playerDealIndex } from './dealIndex'
 
 type FeltProps = {
   game: GameState
@@ -18,6 +19,7 @@ type FeltProps = {
   betInput: number
   peeking: boolean
   shuffling: boolean
+  loud?: boolean
 }
 
 export function FeltTable({
@@ -26,13 +28,14 @@ export function FeltTable({
   betInput,
   peeking,
   shuffling,
+  loud = false,
 }: FeltProps) {
   const phase = game.phase.kind
   const showSpotBet = phase === 'betting' || game.playerHands.length === 0
   const payoutFor = (i: number) => game.lastPayouts.find((p) => p.handIndex === i)
 
   return (
-    <div className="felt" data-tour="felt">
+    <div className={`felt${loud ? ' is-play' : ''}`} data-tour="felt">
       <div className="felt-rail" />
       <div className="felt-markings">
         <p className="felt-bj">
@@ -83,7 +86,10 @@ export function FeltTable({
       )}
 
       {phase === 'handComplete' && game.lastPayouts[0] && (
-        <ResultRibbon payout={payoutFor(game.activeHandIndex) ?? game.lastPayouts[0]} />
+        <ResultRibbon
+          payout={payoutFor(game.activeHandIndex) ?? game.lastPayouts[0]}
+          loud={loud}
+        />
       )}
     </div>
   )
@@ -108,7 +114,7 @@ function DealerZone({ dealer, peeking, phase }: DealerProps) {
             key={c.id}
             card={c}
             faceDown={dealer.holeHidden && i === 1}
-            dealIndex={i === 0 ? 1 : i === 1 ? 3 : 0}
+            dealIndex={dealerDealIndex(i)}
             peeking={peeking && i === 1 && dealer.holeHidden}
           />
         ))}
@@ -155,7 +161,7 @@ function PlayerZone({ hands, activeIndex, payouts, showResults }: PlayerProps) {
                   <CardView
                     key={c.id}
                     card={c}
-                    dealIndex={ci === 0 ? 0 : ci === 1 ? 2 : 0}
+                    dealIndex={playerDealIndex(ci)}
                     doubled={h.doubled && ci === h.cards.length - 1}
                   />
                 ))}
@@ -184,9 +190,18 @@ function PlayerZone({ hands, activeIndex, payouts, showResults }: PlayerProps) {
   )
 }
 
-function ResultRibbon({ payout }: { payout: HandPayout }) {
+function ResultRibbon({
+  payout,
+  loud = false,
+}: {
+  payout: HandPayout
+  loud?: boolean
+}) {
   return (
-    <div className={`result-ribbon ${payout.result}`} role="status">
+    <div
+      className={`result-ribbon ${payout.result}${loud ? ' is-loud' : ''}`}
+      role="status"
+    >
       {resultLabel(payout.result, payout.net)}
     </div>
   )

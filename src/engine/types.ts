@@ -96,6 +96,10 @@ export type TrainerSettings = {
   countCheckEveryNHands: number
   soundEnabled: boolean
   autoNextHand: boolean
+  /** Keep the Hi-Lo notes panel open while playing. */
+  cheatSheetOpen: boolean
+  /** Play hides the trainer rail. Train shows counts and drills. */
+  tableMood: 'play' | 'train'
 }
 
 export type SessionStats = {
@@ -137,7 +141,9 @@ export const DEFAULT_TRAINER: TrainerSettings = {
   failOnLostCount: false,
   decisionTimerSec: 5,
   decisionTimerEnabled: false,
-  countCheckEveryNHands: 10,
+  countCheckEveryNHands: 0,
   soundEnabled: true,
   autoNextHand: false,
+  cheatSheetOpen: false,
+  tableMood: 'play',
 }

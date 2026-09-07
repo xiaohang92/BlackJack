@@ -1,18 +1,23 @@
 import { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import { recommendedBet } from './engine/betSizing'
-import { trueCount } from './engine/hiLo'
+import { remainingDecksRounded, trueCount } from './engine/hiLo'
 import { cardsRemaining } from './engine/shoe'
+import { shoeRound } from './engine/gameMachine'
 import { ActionBar } from './components/ActionBar'
 import { BettingBar } from './components/BettingBar'
+import { CheatSheet } from './components/CheatSheet'
 import { CountModal } from './components/CountModal'
 import { SettingsModal } from './components/SettingsModal'
 import { FeltTable } from './components/TableView'
+import { ShoeStrip } from './components/ShoeStrip'
 import { TrainerPanel, type RailTab } from './components/TrainerPanel'
 import { GuidedTour, tabForTourTarget } from './components/GuidedTour'
 import { HandHistory } from './components/HandHistory'
 import { useGameStore } from './store/gameStore'
 import { useSettingsStore } from './store/settingsStore'
 import { useStatsStore } from './store/statsStore'
+import { describeNextStep } from './engine/nextStep'
+import { formatNet, netTotal, overallTone, resultTitle } from './engine/resultView'
 import type { PlayerAction } from './engine/types'
 import {
   playBlackjack,
@@ -49,6 +54,7 @@ export default function App() {
   const [view, setView] = useState<'table' | 'sim'>('table')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [forcedHint, setForcedHint] = useState<PlayerAction | null>(null)
+  const [hintOpen, setHintOpen] = useState(false)
   const [timerLeft, setTimerLeft] = useState(1)
   const [tourOpen, setTourOpen] = useState(false)
   const [railTab, setRailTab] = useState<RailTab>('count')
@@ -61,6 +67,8 @@ export default function App() {
   const tourCompleted = useSettingsStore((s) => s.tourCompleted)
   const setTourCompleted = useSettingsStore((s) => s.setTourCompleted)
   const setTrainer = useSettingsStore((s) => s.setTrainer)
+  const notesOpen = trainer.cheatSheetOpen
+  const isPlay = trainer.tableMood !== 'train'
   const game = useGameStore((s) => s.game)
   const betInput = useGameStore((s) => s.betInput)
   const lastBet = useGameStore((s) => s.lastBet)
@@ -83,6 +91,8 @@ export default function App() {
   const setDistraction = useGameStore((s) => s.setDistraction)
   const countModalOpen = useGameStore((s) => s.countModalOpen)
   const recentResults = useStatsStore((s) => s.recentResults)
+  const winStreak = useStatsStore((s) => s.winStreak)
+  const coldStreak = useStatsStore((s) => s.coldStreak)
 
   const prevHole = useRef(true)
   const prevCardCount = useRef(0)
@@ -107,11 +117,25 @@ export default function App() {
   const finishTour = () => {
     setTourOpen(false)
     setTourCompleted(true)
+    setTrainer({ tableMood: 'play' })
   }
 
   const handleTourTarget = (target: string | undefined) => {
     const tab = tabForTourTarget(target)
-    if (tab) setRailTab(tab)
+    if (tab) {
+      setRailTab(tab)
+      setTrainer({ tableMood: 'train' })
+    } else if (
+      target === 'felt' ||
+      target === 'betting' ||
+      target === 'controls' ||
+      target === 'mood-tabs'
+    ) {
+      setTrainer({ tableMood: 'play' })
+    }
+    if (target === 'cheat-sheet' || target === 'notes-btn') {
+      setTrainer({ cheatSheetOpen: true })
+    }
   }
 
   const beginDeal = () => {
@@ -175,6 +199,7 @@ export default function App() {
   ])
 
   useEffect(() => {
+    if (isPlay || notesOpen) return
     if (
       game.phase.kind === 'handComplete' &&
       trainer.countCheckEveryNHands > 0 &&
@@ -183,7 +208,14 @@ export default function App() {
     ) {
       openCountModal()
     }
-  }, [game.handsPlayed, game.phase.kind, trainer.countCheckEveryNHands, openCountModal])
+  }, [
+    game.handsPlayed,
+    game.phase.kind,
+    trainer.countCheckEveryNHands,
+    notesOpen,
+    isPlay,
+    openCountModal,
+  ])
 
   useEffect(() => {
     if (!trainer.autoNextHand) return
@@ -193,7 +225,7 @@ export default function App() {
   }, [game.phase.kind, trainer.autoNextHand, countModalOpen, tourOpen, nextHand])
 
   useEffect(() => {
-    if (!trainer.distractionMode) return
+    if (isPlay || !trainer.distractionMode) return
     if (game.phase.kind !== 'dealing' && game.phase.kind !== 'playerAction') {
       return
     }
@@ -202,7 +234,7 @@ export default function App() {
     setDistraction(msg)
     const t = setTimeout(() => setDistraction(null), 2800)
     return () => clearTimeout(t)
-  }, [game.phase.kind, game.handsPlayed, trainer.distractionMode, setDistraction])
+  }, [game.phase.kind, game.handsPlayed, trainer.distractionMode, isPlay, setDistraction])
 
   useEffect(() => {
     if (!trainer.decisionTimerEnabled || countModalOpen || animLock) return
@@ -245,6 +277,11 @@ export default function App() {
     countModalOpen,
     animLock,
   ])
+
+  useEffect(() => {
+    setHintOpen(false)
+    setForcedHint(null)
+  }, [game.phase.kind, game.activeHandIndex])
 
   const cardCount =
     game.dealer.cards.length +
@@ -378,6 +415,28 @@ export default function App() {
     }).amount
   }, [game.runningCount, game.shoe, game.bankroll, trainer])
 
+  const recAmount = Math.max(trainer.baseUnit, recBet)
+  const shoeHint = {
+    round: shoeRound(game),
+    shoeDecks: game.rules.decks,
+    cardsLeft: cardsRemaining(game.shoe),
+    cardsTotal: game.rules.decks * 52,
+    decksRemaining: remainingDecksRounded(cardsRemaining(game.shoe)),
+    shuffleNext: game.shoe.needsShuffle,
+  }
+  const step = describeNextStep({
+    phase: game.phase.kind,
+    advice: adv,
+    recBet: recAmount,
+    game,
+  })
+  const revealHint = () => {
+    setHintOpen(true)
+    if (adv && adv.action !== 'insurance' && adv.action !== 'noInsurance') {
+      setForcedHint(adv.action)
+    }
+  }
+
   if (view === 'sim') {
     return (
       <Suspense fallback={<div className="sim-page">Loading simulation…</div>}>
@@ -389,15 +448,37 @@ export default function App() {
   const phase = game.phase.kind
   const controlsLocked = countModalOpen || tourOpen || animLock || shuffling
   const soundOn = trainer.soundEnabled !== false
+  const settled = phase === 'handComplete' && game.lastPayouts.length > 0
+  const settleTone = settled ? overallTone(game.lastPayouts) : null
+  const settleNet = settled ? netTotal(game.lastPayouts) : 0
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${isPlay ? ' mood-play' : ' mood-train'}`}>
       <header className="top-bar">
         <h1 className="brand">
-          Hi-Lo <span>Blackjack Trainer</span>
+          Hi-Lo <span>Blackjack</span>
         </h1>
         <HandHistory results={recentResults} />
         <div className="top-actions">
+          <div className="view-tabs" data-tour="mood-tabs">
+            <button
+              type="button"
+              className={`btn ${isPlay ? 'active' : ''}`}
+              aria-pressed={isPlay}
+              onClick={() => setTrainer({ tableMood: 'play' })}
+            >
+              Play
+            </button>
+            <button
+              type="button"
+              className={`btn ${!isPlay ? 'active' : ''}`}
+              aria-pressed={!isPlay}
+              data-tour="train-btn"
+              onClick={() => setTrainer({ tableMood: 'train' })}
+            >
+              Train
+            </button>
+          </div>
           <div className="view-tabs">
             <button
               type="button"
@@ -415,6 +496,15 @@ export default function App() {
               Simulation
             </button>
           </div>
+          <button
+            type="button"
+            className={`btn ${notesOpen ? 'active' : ''}`}
+            data-tour="notes-btn"
+            aria-pressed={notesOpen}
+            onClick={() => setTrainer({ cheatSheetOpen: !notesOpen })}
+          >
+            Notes
+          </button>
           <button
             type="button"
             className={`btn btn-icon ${soundOn ? 'is-on' : ''}`}
@@ -445,18 +535,54 @@ export default function App() {
         </div>
       </header>
 
-      <main className="main-table">
+      <main className={`main-table${notesOpen ? ' with-notes' : ''}`}>
+        {notesOpen && (
+          <CheatSheet
+            baseUnit={trainer.baseUnit}
+            shoe={shoeHint}
+            onClose={() => setTrainer({ cheatSheetOpen: false })}
+          />
+        )}
         <FeltTable
           game={game}
           rules={rules}
           betInput={betInput}
           peeking={peeking}
           shuffling={shuffling}
+          loud={isPlay}
         />
 
         <div className="status-bar">
-          <div className="bankroll">Bankroll ${game.bankroll.toFixed(0)}</div>
-          <div className="message">{game.lastMessage}</div>
+          <div
+            className={`bankroll${settleTone ? ` is-${settleTone}` : ''}${settled && isPlay ? ' is-pulse' : ''}`}
+          >
+            Bankroll ${game.bankroll.toFixed(0)}
+            {settled && (
+              <span className="bankroll-delta">{formatNet(settleNet)}</span>
+            )}
+          </div>
+          {(winStreak > 0 || coldStreak > 0) && (
+            <div
+              className={`streak${winStreak > 0 ? ' is-hot' : ' is-cold'}`}
+            >
+              {winStreak > 0
+                ? `Win streak ${winStreak}`
+                : `Cold ${coldStreak}`}
+            </div>
+          )}
+          <ShoeStrip
+            round={shoeHint.round}
+            decks={shoeHint.shoeDecks}
+            cardsLeft={shoeHint.cardsLeft}
+            cardsTotal={shoeHint.cardsTotal}
+            decksRemaining={shoeHint.decksRemaining}
+            shuffleNext={shoeHint.shuffleNext}
+          />
+          <div className={`message${settleTone ? ` is-${settleTone}` : ''}`}>
+            {settled && settleTone
+              ? `${resultTitle(settleTone)} ${formatNet(settleNet)}`
+              : game.lastMessage}
+          </div>
           <div className="kbd-hint">
             {phase === 'betting' && 'Space deal · 1–5 chips · B rebet · C clear'}
             {phase === 'playerAction' && 'H hit · S stand · D double · P split · R surrender'}
@@ -476,11 +602,24 @@ export default function App() {
         </div>
 
         <div className="controls-dock" data-tour="controls">
+          {hintOpen && (
+            <div className="hint-banner" role="status">
+              <p>
+                <strong>Next.</strong> {step.next}
+              </p>
+              {step.best && (
+                <p>
+                  <strong>Best play.</strong> {step.best}
+                </p>
+              )}
+            </div>
+          )}
+
           {phase === 'betting' && (
             <BettingBar
               bet={betInput}
               bankroll={game.bankroll}
-              recommended={Math.max(trainer.baseUnit, recBet)}
+              recommended={recAmount}
               lastBet={lastBet}
               minBet={1}
               onBetChange={setBetInput}
@@ -497,6 +636,7 @@ export default function App() {
               }}
               onDeal={beginDeal}
               disabled={controlsLocked}
+              showRecommended={!isPlay}
             />
           )}
 
@@ -505,7 +645,9 @@ export default function App() {
               <button
                 type="button"
                 className={`btn btn-action ${
-                  adv?.action === 'insurance' && trainer.autoHint ? 'is-hint' : ''
+                  adv?.action === 'insurance' && (trainer.autoHint || hintOpen)
+                    ? 'is-hint'
+                    : ''
                 }`}
                 disabled={controlsLocked}
                 onClick={() => insurance(true)}
@@ -516,7 +658,7 @@ export default function App() {
               <button
                 type="button"
                 className={`btn btn-action ${
-                  adv?.action === 'noInsurance' && trainer.autoHint
+                  adv?.action === 'noInsurance' && (trainer.autoHint || hintOpen)
                     ? 'is-hint'
                     : ''
                 }`}
@@ -538,13 +680,8 @@ export default function App() {
                 setForcedHint(null)
                 playerAction(a)
               }}
-              showHintButton={!trainer.autoHint}
-              onHint={() => {
-                const a = advice()
-                if (a && a.action !== 'insurance' && a.action !== 'noInsurance') {
-                  setForcedHint(a.action)
-                }
-              }}
+              showHintButton={false}
+              onHint={revealHint}
             />
           )}
 
@@ -560,10 +697,23 @@ export default function App() {
               </button>
             </div>
           )}
+
+          <div className="action-bar">
+            <button
+              type="button"
+              className={`btn btn-hint ${hintOpen ? 'active' : ''}`}
+              data-tour="hint-btn"
+              onClick={revealHint}
+            >
+              Hint
+            </button>
+          </div>
         </div>
       </main>
 
-      <TrainerPanel tab={railTab} onTabChange={setRailTab} />
+      {!isPlay && (
+        <TrainerPanel tab={railTab} onTabChange={setRailTab} />
+      )}
 
       <SettingsModal
         open={settingsOpen}
