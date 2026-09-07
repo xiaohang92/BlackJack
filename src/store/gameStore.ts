@@ -18,10 +18,16 @@ import { useStatsStore } from './statsStore'
 type GameStore = {
   game: GameState
   betInput: number
+  lastBet: number
+  chipAdds: number[]
   countModalOpen: boolean
   distraction: string | null
   init: (rules: RulesConfig, bankroll?: number) => void
   setBetInput: (n: number) => void
+  addChip: (value: number) => void
+  undoChip: () => void
+  clearBet: () => void
+  rebet: () => void
   dispatch: (event: GameEvent) => void
   placeBet: () => void
   playerAction: (action: PlayerAction) => void
@@ -49,14 +55,49 @@ type GameStore = {
 export const useGameStore = create<GameStore>((set, get) => ({
   game: createInitialState(),
   betInput: 10,
+  lastBet: 10,
+  chipAdds: [10],
   countModalOpen: false,
   distraction: null,
 
   init: (rules, bankroll = 1000) => {
-    set({ game: createInitialState(rules, bankroll), betInput: 10 })
+    set({
+      game: createInitialState(rules, bankroll),
+      betInput: 10,
+      lastBet: 10,
+      chipAdds: [10],
+    })
   },
 
-  setBetInput: (n) => set({ betInput: n }),
+  setBetInput: (n) => set({ betInput: Math.max(0, n), chipAdds: [] }),
+
+  addChip: (value) => {
+    const { game, betInput } = get()
+    const next = Math.min(game.bankroll, betInput + value)
+    if (next === betInput) return
+    set({ betInput: next, chipAdds: [...get().chipAdds, next - betInput] })
+  },
+
+  undoChip: () => {
+    const { chipAdds, betInput } = get()
+    const last = chipAdds[chipAdds.length - 1]
+    if (last == null) {
+      set({ betInput: 0 })
+      return
+    }
+    set({
+      betInput: Math.max(0, betInput - last),
+      chipAdds: chipAdds.slice(0, -1),
+    })
+  },
+
+  clearBet: () => set({ betInput: 0, chipAdds: [] }),
+
+  rebet: () => {
+    const { lastBet, game } = get()
+    const amount = Math.min(game.bankroll, lastBet)
+    set({ betInput: amount, chipAdds: amount > 0 ? [amount] : [] })
+  },
 
   dispatch: (event) => {
     set({ game: reduce(get().game, event) })
@@ -65,11 +106,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
   placeBet: () => {
     const { game, betInput } = get()
     if (game.phase.kind !== 'betting') return
-    set({ game: reduce(game, { type: 'PLACE_BET', amount: betInput }) })
-    const after = get().game
-    if (after.phase.kind === 'blackjackCheck') {
-      set({ game: reduce(after, { type: 'DEAL_STEP' }) })
-    }
+    if (betInput <= 0 || betInput > game.bankroll) return
+    set({
+      game: reduce(game, { type: 'PLACE_BET', amount: betInput }),
+      lastBet: betInput,
+      chipAdds: [],
+    })
   },
 
   insurance: (take) => {
@@ -82,11 +124,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       correct: grade.errorKind === null,
       errorKind: grade.errorKind,
     })
-    let next = reduce(game, { type: 'INSURANCE', take })
-    if (next.phase.kind === 'blackjackCheck') {
-      next = reduce(next, { type: 'DEAL_STEP' })
-    }
-    set({ game: next })
+    set({ game: reduce(game, { type: 'INSURANCE', take }) })
   },
 
   playerAction: (action) => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import { recommendedBet } from './engine/betSizing'
 import { trueCount } from './engine/hiLo'
 import { cardsRemaining } from './engine/shoe'
@@ -6,12 +6,27 @@ import { ActionBar } from './components/ActionBar'
 import { BettingBar } from './components/BettingBar'
 import { CountModal } from './components/CountModal'
 import { SettingsModal } from './components/SettingsModal'
-import { DealerZone, PlayerZone } from './components/TableView'
+import { FeltTable } from './components/TableView'
 import { TrainerPanel, type RailTab } from './components/TrainerPanel'
 import { GuidedTour, tabForTourTarget } from './components/GuidedTour'
+import { HandHistory } from './components/HandHistory'
 import { useGameStore } from './store/gameStore'
 import { useSettingsStore } from './store/settingsStore'
+import { useStatsStore } from './store/statsStore'
 import type { PlayerAction } from './engine/types'
+import {
+  playBlackjack,
+  playChip,
+  playDeal,
+  playDealSequence,
+  playFlip,
+  playLose,
+  playPush,
+  playShuffle,
+  playWin,
+  setSoundEnabled,
+  unlockAudio,
+} from './audio/tableSounds'
 
 const SimulationDashboard = lazy(() =>
   import('./components/SimulationDashboard').then((m) => ({
@@ -28,6 +43,8 @@ const DISTRACTIONS = [
   'Dealer: "Insurance? Anyone?"',
 ]
 
+const INITIAL_DEAL_MS = 220 * 3 + 560
+
 export default function App() {
   const [view, setView] = useState<'table' | 'sim'>('table')
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -35,16 +52,25 @@ export default function App() {
   const [timerLeft, setTimerLeft] = useState(1)
   const [tourOpen, setTourOpen] = useState(false)
   const [railTab, setRailTab] = useState<RailTab>('count')
+  const [animLock, setAnimLock] = useState(false)
+  const [shuffling, setShuffling] = useState(false)
+  const [peeking, setPeeking] = useState(false)
 
   const rules = useSettingsStore((s) => s.rules)
   const trainer = useSettingsStore((s) => s.trainer)
   const tourCompleted = useSettingsStore((s) => s.tourCompleted)
   const setTourCompleted = useSettingsStore((s) => s.setTourCompleted)
+  const setTrainer = useSettingsStore((s) => s.setTrainer)
   const game = useGameStore((s) => s.game)
   const betInput = useGameStore((s) => s.betInput)
+  const lastBet = useGameStore((s) => s.lastBet)
   const distraction = useGameStore((s) => s.distraction)
   const init = useGameStore((s) => s.init)
   const setBetInput = useGameStore((s) => s.setBetInput)
+  const addChip = useGameStore((s) => s.addChip)
+  const undoChip = useGameStore((s) => s.undoChip)
+  const clearBet = useGameStore((s) => s.clearBet)
+  const rebet = useGameStore((s) => s.rebet)
   const placeBet = useGameStore((s) => s.placeBet)
   const playerAction = useGameStore((s) => s.playerAction)
   const insurance = useGameStore((s) => s.insurance)
@@ -56,10 +82,20 @@ export default function App() {
   const openCountModal = useGameStore((s) => s.openCountModal)
   const setDistraction = useGameStore((s) => s.setDistraction)
   const countModalOpen = useGameStore((s) => s.countModalOpen)
+  const recentResults = useStatsStore((s) => s.recentResults)
+
+  const prevHole = useRef(true)
+  const prevCardCount = useRef(0)
+  const prevPhase = useRef(game.phase.kind)
+  const dealLockUntil = useRef(0)
 
   useEffect(() => {
     init(rules, 1000)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setSoundEnabled(trainer.soundEnabled !== false)
+  }, [trainer.soundEnabled])
 
   useEffect(() => {
     if (!tourCompleted && view === 'table') {
@@ -77,31 +113,66 @@ export default function App() {
     const tab = tabForTourTarget(target)
     if (tab) setRailTab(tab)
   }
+
+  const beginDeal = () => {
+    unlockAudio()
+    if (betInput < 1 || betInput > game.bankroll) return
+    const needsShuffle = game.shoe.needsShuffle
+    setAnimLock(true)
+    const afterShuffle = () => {
+      setShuffling(false)
+      placeBet()
+      playDealSequence(4, 0.22)
+      dealLockUntil.current = Date.now() + INITIAL_DEAL_MS
+      window.setTimeout(() => setAnimLock(false), INITIAL_DEAL_MS)
+    }
+    if (needsShuffle) {
+      setShuffling(true)
+      playShuffle()
+      window.setTimeout(afterShuffle, 950)
+    } else {
+      afterShuffle()
+    }
+  }
+
   useEffect(() => {
-    if (countModalOpen) return
+    if (countModalOpen || shuffling) return
     if (game.phase.kind === 'blackjackCheck') {
+      const remaining = Math.max(0, dealLockUntil.current - Date.now())
+      const wait = remaining + 280
+      setPeeking(remaining <= 0)
+      const peekT = setTimeout(() => setPeeking(true), remaining)
       const t = setTimeout(() => {
+        setPeeking(false)
         useGameStore.getState().dispatch({ type: 'DEAL_STEP' })
-      }, 200)
-      return () => clearTimeout(t)
+      }, wait)
+      return () => {
+        clearTimeout(t)
+        clearTimeout(peekT)
+        setPeeking(false)
+      }
     }
     if (game.phase.kind === 'dealerAction') {
-      const t = setTimeout(() => tickDealer(), trainer.dealerSpeedMs)
+      const revealWait = game.dealer.holeHidden
+        ? Math.max(trainer.dealerSpeedMs, 560)
+        : trainer.dealerSpeedMs
+      const t = setTimeout(() => tickDealer(), revealWait)
       return () => clearTimeout(t)
     }
     if (game.phase.kind === 'payout') {
-      const t = setTimeout(() => tickResolve(), trainer.dealerSpeedMs)
+      const t = setTimeout(() => tickResolve(), Math.max(trainer.dealerSpeedMs, 380))
       return () => clearTimeout(t)
     }
   }, [
     game.phase,
+    game.dealer.holeHidden,
     trainer.dealerSpeedMs,
     tickDealer,
     tickResolve,
     countModalOpen,
+    shuffling,
   ])
 
-  // Periodic count check
   useEffect(() => {
     if (
       game.phase.kind === 'handComplete' &&
@@ -113,7 +184,13 @@ export default function App() {
     }
   }, [game.handsPlayed, game.phase.kind, trainer.countCheckEveryNHands, openCountModal])
 
-  // Distractions mode during dealing / early play
+  useEffect(() => {
+    if (!trainer.autoNextHand) return
+    if (game.phase.kind !== 'handComplete' || countModalOpen || tourOpen) return
+    const t = setTimeout(() => nextHand(), 1700)
+    return () => clearTimeout(t)
+  }, [game.phase.kind, trainer.autoNextHand, countModalOpen, tourOpen, nextHand])
+
   useEffect(() => {
     if (!trainer.distractionMode) return
     if (game.phase.kind !== 'dealing' && game.phase.kind !== 'playerAction') {
@@ -126,9 +203,8 @@ export default function App() {
     return () => clearTimeout(t)
   }, [game.phase.kind, game.handsPlayed, trainer.distractionMode, setDistraction])
 
-  // Decision timer
   useEffect(() => {
-    if (!trainer.decisionTimerEnabled || countModalOpen) return
+    if (!trainer.decisionTimerEnabled || countModalOpen || animLock) return
     const timed =
       game.phase.kind === 'betting' ||
       game.phase.kind === 'playerAction' ||
@@ -146,7 +222,7 @@ export default function App() {
       if (left <= 0) {
         clearInterval(id)
         if (game.phase.kind === 'betting') {
-          placeBet()
+          beginDeal()
         } else if (game.phase.kind === 'insurance') {
           insurance(false)
         } else if (game.phase.kind === 'playerAction') {
@@ -166,7 +242,117 @@ export default function App() {
     trainer.decisionTimerEnabled,
     trainer.decisionTimerSec,
     countModalOpen,
+    animLock,
   ])
+
+  const cardCount =
+    game.dealer.cards.length +
+    game.playerHands.reduce((n, h) => n + h.cards.length, 0)
+
+  useEffect(() => {
+    if (cardCount > prevCardCount.current && prevCardCount.current > 0) {
+      const added = cardCount - prevCardCount.current
+      if (added === 1) playDeal()
+      else if (added > 1) playDealSequence(added, 0.18)
+    }
+    prevCardCount.current = cardCount
+  }, [cardCount])
+
+  useEffect(() => {
+    if (prevHole.current && !game.dealer.holeHidden && game.dealer.cards.length >= 2) {
+      playFlip()
+    }
+    prevHole.current = game.dealer.holeHidden
+  }, [game.dealer.holeHidden, game.dealer.cards.length])
+
+  useEffect(() => {
+    if (prevPhase.current !== 'handComplete' && game.phase.kind === 'handComplete') {
+      const kinds = new Set(game.lastPayouts.map((p) => p.result))
+      if (kinds.has('blackjack')) playBlackjack()
+      else if (kinds.has('win')) playWin()
+      else if (kinds.has('push')) playPush()
+      else playLose()
+    }
+    prevPhase.current = game.phase.kind
+  }, [game.phase.kind, game.lastPayouts])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) {
+        return
+      }
+      if (countModalOpen || settingsOpen || tourOpen || shuffling) return
+      const key = e.key.toLowerCase()
+      const phase = game.phase.kind
+
+      if (phase === 'betting') {
+        if (key === ' ' || key === 'enter') {
+          e.preventDefault()
+          beginDeal()
+          return
+        }
+        if (key === 'c') {
+          clearBet()
+          return
+        }
+        if (key === 'backspace') {
+          e.preventDefault()
+          undoChip()
+          return
+        }
+        if (key === 'b') {
+          rebet()
+          return
+        }
+        const chipMap: Record<string, number> = {
+          '1': 1,
+          '2': 5,
+          '3': 25,
+          '4': 100,
+          '5': 500,
+        }
+        if (chipMap[key]) {
+          addChip(chipMap[key]!)
+          playChip()
+        }
+        return
+      }
+
+      if (phase === 'insurance') {
+        if (key === 'i' || key === 'y') insurance(true)
+        if (key === 'n' || key === 's') insurance(false)
+        return
+      }
+
+      if (phase === 'playerAction' && !animLock) {
+        const map: Record<string, PlayerAction> = {
+          h: 'hit',
+          s: 'stand',
+          d: 'double',
+          p: 'split',
+          '2': 'split',
+          r: 'surrender',
+          u: 'surrender',
+        }
+        const action = map[key]
+        if (action && legal().includes(action)) {
+          e.preventDefault()
+          setForcedHint(null)
+          playerAction(action)
+        }
+        return
+      }
+
+      if (phase === 'handComplete' && (key === ' ' || key === 'enter' || key === 'n')) {
+        e.preventDefault()
+        nextHand()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 
   const adv = advice()
   const hintAction: PlayerAction | null = useMemo(() => {
@@ -179,8 +365,7 @@ export default function App() {
 
   const recBet = useMemo(() => {
     const tc = trueCount(game.runningCount, cardsRemaining(game.shoe))
-    const trunc =
-      tc >= 0 ? Math.floor(tc) : Math.ceil(tc)
+    const trunc = tc >= 0 ? Math.floor(tc) : Math.ceil(tc)
     return recommendedBet({
       bankroll: game.bankroll,
       trueCount: tc,
@@ -201,6 +386,8 @@ export default function App() {
   }
 
   const phase = game.phase.kind
+  const controlsLocked = countModalOpen || tourOpen || animLock || shuffling
+  const soundOn = trainer.soundEnabled !== false
 
   return (
     <div className="app-shell">
@@ -208,6 +395,7 @@ export default function App() {
         <h1 className="brand">
           Hi-Lo <span>Blackjack Trainer</span>
         </h1>
+        <HandHistory results={recentResults} />
         <div className="top-actions">
           <div className="view-tabs">
             <button
@@ -228,6 +416,18 @@ export default function App() {
           </div>
           <button
             type="button"
+            className={`btn btn-icon ${soundOn ? 'is-on' : ''}`}
+            aria-pressed={soundOn}
+            aria-label={soundOn ? 'Mute sounds' : 'Unmute sounds'}
+            onClick={() => {
+              unlockAudio()
+              setTrainer({ soundEnabled: !soundOn })
+            }}
+          >
+            {soundOn ? '🔊' : '🔇'}
+          </button>
+          <button
+            type="button"
             className="btn"
             onClick={() => setTourOpen(true)}
           >
@@ -245,19 +445,23 @@ export default function App() {
       </header>
 
       <main className="main-table">
-        <div className="felt" data-tour="felt">
-          <DealerZone dealer={game.dealer} />
-          {game.playerHands.length > 0 && (
-            <PlayerZone
-              hands={game.playerHands}
-              activeIndex={game.activeHandIndex}
-            />
-          )}
-        </div>
+        <FeltTable
+          game={game}
+          rules={rules}
+          betInput={betInput}
+          peeking={peeking}
+          shuffling={shuffling}
+        />
 
         <div className="status-bar">
           <div className="bankroll">Bankroll ${game.bankroll.toFixed(0)}</div>
           <div className="message">{game.lastMessage}</div>
+          <div className="kbd-hint">
+            {phase === 'betting' && 'Space deal · 1–5 chips · B rebet · C clear'}
+            {phase === 'playerAction' && 'H hit · S stand · D double · P split · R surrender'}
+            {phase === 'insurance' && 'I insurance · N no'}
+            {phase === 'handComplete' && 'Space next hand'}
+          </div>
           {trainer.decisionTimerEnabled &&
             (phase === 'betting' ||
               phase === 'playerAction' ||
@@ -276,9 +480,22 @@ export default function App() {
               bet={betInput}
               bankroll={game.bankroll}
               recommended={Math.max(trainer.baseUnit, recBet)}
+              lastBet={lastBet}
+              minBet={1}
               onBetChange={setBetInput}
-              onDeal={placeBet}
-              disabled={countModalOpen || tourOpen}
+              onChip={(v) => {
+                unlockAudio()
+                playChip()
+                addChip(v)
+              }}
+              onUndo={undoChip}
+              onClear={clearBet}
+              onRebet={() => {
+                playChip()
+                rebet()
+              }}
+              onDeal={beginDeal}
+              disabled={controlsLocked}
             />
           )}
 
@@ -289,9 +506,11 @@ export default function App() {
                 className={`btn btn-action ${
                   adv?.action === 'insurance' && trainer.autoHint ? 'is-hint' : ''
                 }`}
+                disabled={controlsLocked}
                 onClick={() => insurance(true)}
               >
                 Take Insurance
+                <kbd>I</kbd>
               </button>
               <button
                 type="button"
@@ -300,9 +519,11 @@ export default function App() {
                     ? 'is-hint'
                     : ''
                 }`}
+                disabled={controlsLocked}
                 onClick={() => insurance(false)}
               >
                 No Insurance
+                <kbd>N</kbd>
               </button>
             </div>
           )}
@@ -311,7 +532,7 @@ export default function App() {
             <ActionBar
               legal={legal()}
               hint={hintAction}
-              disabled={countModalOpen || tourOpen}
+              disabled={controlsLocked}
               onAction={(a) => {
                 setForcedHint(null)
                 playerAction(a)
@@ -330,10 +551,11 @@ export default function App() {
             <div className="action-bar">
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-primary btn-deal"
                 onClick={nextHand}
               >
                 Next Hand
+                <kbd>␣</kbd>
               </button>
             </div>
           )}

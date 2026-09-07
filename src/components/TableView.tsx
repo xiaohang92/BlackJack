@@ -1,18 +1,102 @@
-import { handTotal } from '../engine/hand'
-import type { DealerHand, PlayerHand } from '../engine/types'
+import { handTotal, isBlackjack } from '../engine/hand'
+import { cardsRemaining, totalCards } from '../engine/shoe'
+import type {
+  DealerHand,
+  GamePhase,
+  HandPayout,
+  PlayerHand,
+  RulesConfig,
+} from '../engine/types'
+import type { GameState } from '../engine/gameMachine'
 import { CardView } from './CardView'
+import { ChipStack } from './ChipStack'
+import { ShoeView } from './ShoeView'
+
+type FeltProps = {
+  game: GameState
+  rules: RulesConfig
+  betInput: number
+  peeking: boolean
+  shuffling: boolean
+}
+
+export function FeltTable({
+  game,
+  rules,
+  betInput,
+  peeking,
+  shuffling,
+}: FeltProps) {
+  const phase = game.phase.kind
+  const showSpotBet = phase === 'betting' || game.playerHands.length === 0
+  const payoutFor = (i: number) => game.lastPayouts.find((p) => p.handIndex === i)
+
+  return (
+    <div className="felt" data-tour="felt">
+      <div className="felt-rail" />
+      <div className="felt-markings">
+        <p className="felt-bj">
+          BLACKJACK PAYS {rules.blackjackPayout === '3:2' ? '3 TO 2' : '6 TO 5'}
+        </p>
+        <p className="felt-ins">INSURANCE PAYS 2 TO 1</p>
+        <p className="felt-s17">
+          {rules.hitSoft17 ? 'DEALER HITS SOFT 17' : 'DEALER MUST STAND ON 17'}
+        </p>
+      </div>
+
+      <ShoeView
+        remaining={cardsRemaining(game.shoe)}
+        total={totalCards(game.shoe)}
+      />
+
+      <DealerZone dealer={game.dealer} peeking={peeking} phase={phase} />
+
+      {showSpotBet && (
+        <div className="bet-circle-wrap">
+          <div className="bet-circle">
+            <ChipStack amount={betInput} />
+            <span className="bet-circle-caption">BET</span>
+          </div>
+        </div>
+      )}
+
+      {game.playerHands.length > 0 && (
+        <PlayerZone
+          hands={game.playerHands}
+          activeIndex={game.activeHandIndex}
+          payouts={game.lastPayouts}
+          showResults={phase === 'handComplete' || phase === 'payout'}
+        />
+      )}
+
+      {shuffling && (
+        <div className="shuffle-overlay" role="status">
+          <div className="shuffle-cards" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+            <span />
+          </div>
+          <strong>Shuffling shoe</strong>
+        </div>
+      )}
+
+      {phase === 'handComplete' && game.lastPayouts[0] && (
+        <ResultRibbon payout={payoutFor(game.activeHandIndex) ?? game.lastPayouts[0]} />
+      )}
+    </div>
+  )
+}
 
 type DealerProps = {
   dealer: DealerHand
+  peeking: boolean
+  phase: GamePhase['kind']
 }
 
-export function DealerZone({ dealer }: DealerProps) {
-  const visible = dealer.holeHidden
-    ? dealer.cards.slice(0, 1)
-    : dealer.cards
-  const total = dealer.holeHidden
-    ? null
-    : handTotal(dealer.cards).total
+function DealerZone({ dealer, peeking, phase }: DealerProps) {
+  const total = dealer.holeHidden ? null : handTotal(dealer.cards).total
+  const bj = !dealer.holeHidden && isBlackjack(dealer.cards)
 
   return (
     <div className="hand-zone dealer">
@@ -23,11 +107,21 @@ export function DealerZone({ dealer }: DealerProps) {
             key={c.id}
             card={c}
             faceDown={dealer.holeHidden && i === 1}
+            dealIndex={i === 0 ? 1 : i === 1 ? 3 : 0}
+            peeking={peeking && i === 1 && dealer.holeHidden}
           />
         ))}
-        {visible.length === 0 && <div className="cards-row" />}
       </div>
-      {total !== null && <div className="total-badge">{total}</div>}
+      {total !== null && (
+        <div className={`total-badge ${bj ? 'is-bj' : ''}`}>
+          {bj ? 'BLACKJACK' : total}
+        </div>
+      )}
+      {dealer.holeHidden && dealer.cards.length > 0 && phase !== 'betting' && (
+        <div className="total-badge is-hidden">
+          {handTotal(dealer.cards.slice(0, 1)).total} + ?
+        </div>
+      )}
     </div>
   )
 }
@@ -35,30 +129,52 @@ export function DealerZone({ dealer }: DealerProps) {
 type PlayerProps = {
   hands: PlayerHand[]
   activeIndex: number
+  payouts: HandPayout[]
+  showResults: boolean
 }
 
-export function PlayerZone({ hands, activeIndex }: PlayerProps) {
+function PlayerZone({ hands, activeIndex, payouts, showResults }: PlayerProps) {
   return (
     <div className="hand-zone player">
-      <div className="zone-label">Player</div>
+      <div className="zone-label">You</div>
       <div className="player-hands">
         {hands.map((h, i) => {
           const t = handTotal(h.cards)
+          const payout = payouts.find((p) => p.handIndex === i)
+          const bj = isBlackjack(h.cards) && !h.fromSplit && hands.length === 1
           return (
             <div
               key={i}
-              className={`player-hand ${i === activeIndex ? 'active' : ''}`}
+              className={`player-hand ${i === activeIndex ? 'active' : ''} ${
+                t.busted ? 'is-bust' : ''
+              } ${showResults && payout ? `is-${payout.result}` : ''}`}
             >
               <div className="cards-row">
-                {h.cards.map((c) => (
-                  <CardView key={c.id} card={c} />
+                {h.cards.map((c, ci) => (
+                  <CardView
+                    key={c.id}
+                    card={c}
+                    dealIndex={ci === 0 ? 0 : ci === 1 ? 2 : 0}
+                    doubled={h.doubled && ci === h.cards.length - 1}
+                  />
                 ))}
               </div>
-              <div className="total-badge">
-                {t.busted ? 'BUST' : t.soft ? `${t.total} soft` : t.total}
+              <ChipStack amount={h.bet} />
+              <div className={`total-badge ${t.busted ? 'is-bust' : ''} ${bj ? 'is-bj' : ''}`}>
+                {t.busted
+                  ? 'BUST'
+                  : bj
+                    ? 'BLACKJACK'
+                    : t.soft
+                      ? `${t.total} soft`
+                      : t.total}
                 {h.surrendered ? ' · SUR' : ''}
-                {` · $${h.bet}`}
               </div>
+              {showResults && payout && (
+                <div className={`result-tag ${payout.result}`}>
+                  {resultLabel(payout.result, payout.net)}
+                </div>
+              )}
             </div>
           )
         })}
@@ -66,3 +182,33 @@ export function PlayerZone({ hands, activeIndex }: PlayerProps) {
     </div>
   )
 }
+
+function ResultRibbon({ payout }: { payout: HandPayout }) {
+  return (
+    <div className={`result-ribbon ${payout.result}`} role="status">
+      {resultLabel(payout.result, payout.net)}
+    </div>
+  )
+}
+
+function resultLabel(
+  result: HandPayout['result'],
+  net: number,
+): string {
+  const money =
+    net > 0 ? `+$${net.toFixed(0)}` : net < 0 ? `-$${Math.abs(net).toFixed(0)}` : '$0'
+  switch (result) {
+    case 'blackjack':
+      return `Blackjack ${money}`
+    case 'win':
+      return `You win ${money}`
+    case 'loss':
+      return `Dealer wins ${money}`
+    case 'push':
+      return 'Push'
+    case 'surrender':
+      return `Surrender ${money}`
+  }
+}
+
+export { DealerZone, PlayerZone }

@@ -157,13 +157,19 @@ export function TrainerPanel({ tab, onTabChange }: Props) {
                   ['discardTrayMode', 'Discard tray'],
                   ['distractionMode', 'Distractions'],
                   ['failOnLostCount', 'Fail if lost'],
+                  ['soundEnabled', 'Sound'],
+                  ['autoNextHand', 'Auto next'],
                   ['decisionTimerEnabled', 'Timer'],
                 ] as const
               ).map(([key, label]) => (
                 <label key={key} className="opt-chip">
                   <input
                     type="checkbox"
-                    checked={Boolean(trainer[key])}
+                    checked={
+                      key === 'soundEnabled'
+                        ? trainer.soundEnabled !== false
+                        : Boolean(trainer[key])
+                    }
                     onChange={(e) =>
                       setTrainer({ [key]: e.target.checked })
                     }
