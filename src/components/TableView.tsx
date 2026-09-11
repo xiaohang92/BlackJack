@@ -37,15 +37,6 @@ export function FeltTable({
   return (
     <div className={`felt${loud ? ' is-play' : ''}`} data-tour="felt">
       <div className="felt-rail" />
-      <div className="felt-markings">
-        <p className="felt-bj">
-          BLACKJACK PAYS {rules.blackjackPayout === '3:2' ? '3 TO 2' : '6 TO 5'}
-        </p>
-        <p className="felt-ins">INSURANCE PAYS 2 TO 1</p>
-        <p className="felt-s17">
-          {rules.hitSoft17 ? 'DEALER HITS SOFT 17' : 'DEALER MUST STAND ON 17'}
-        </p>
-      </div>
 
       <div className="felt-top">
         <DealerZone dealer={game.dealer} peeking={peeking} phase={phase} />
@@ -55,14 +46,36 @@ export function FeltTable({
         />
       </div>
 
-      {showSpotBet && (
-        <div className="bet-circle-wrap">
-          <div className="bet-circle">
-            <ChipStack amount={betInput} />
-            <span className="bet-circle-caption">BET</span>
-          </div>
+      <div className="felt-spot">
+        <div className="felt-markings">
+          <p className="felt-bj">
+            BLACKJACK PAYS {rules.blackjackPayout === '3:2' ? '3 TO 2' : '6 TO 5'}
+          </p>
+          <p className="felt-ins">INSURANCE PAYS 2 TO 1</p>
+          <p className="felt-s17">
+            {rules.hitSoft17 ? 'DEALER HITS SOFT 17' : 'DEALER MUST STAND ON 17'}
+          </p>
         </div>
-      )}
+
+        {showSpotBet && (
+          <div className="bet-circle-wrap">
+            <div className="bet-circle">
+              {betInput > 0 ? (
+                <ChipStack amount={betInput} />
+              ) : (
+                <span className="bet-circle-caption">BET</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {phase === 'handComplete' && game.lastPayouts[0] && (
+          <ResultRibbon
+            payout={payoutFor(game.activeHandIndex) ?? game.lastPayouts[0]}
+            loud={loud}
+          />
+        )}
+      </div>
 
       {game.playerHands.length > 0 && (
         <PlayerZone
@@ -83,13 +96,6 @@ export function FeltTable({
           </div>
           <strong>Shuffling shoe</strong>
         </div>
-      )}
-
-      {phase === 'handComplete' && game.lastPayouts[0] && (
-        <ResultRibbon
-          payout={payoutFor(game.activeHandIndex) ?? game.lastPayouts[0]}
-          loud={loud}
-        />
       )}
     </div>
   )

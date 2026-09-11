@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { breakdownChips, chipTone } from '../lib/chips'
+import { chipTone, groupChips } from '../lib/chips'
 
 type Props = {
   amount: number
@@ -14,18 +14,30 @@ export function ChipStack({ amount, label = true }: Props) {
       </div>
     )
   }
-  const chips = breakdownChips(amount)
+  const columns = groupChips(amount)
   return (
     <div className="chip-stack" aria-label={`Bet $${amount}`}>
-      {chips.map((v, i) => (
-        <div
-          key={`${v}-${i}`}
-          className={`table-chip ${chipTone(v)}`}
-          style={{ '--i': i } as CSSProperties}
-        >
-          <span>{v >= 100 ? v : ''}</span>
-        </div>
-      ))}
+      <div className="chip-columns">
+        {columns.map(({ value, count }) => (
+          <div
+            key={value}
+            className="chip-pile"
+            style={{ '--n': count } as CSSProperties}
+          >
+            {Array.from({ length: count }, (_, i) => (
+              <div
+                key={`${value}-${i}`}
+                className={`table-chip ${chipTone(value)}`}
+                style={{ '--i': i } as CSSProperties}
+              >
+                {i === count - 1 && (
+                  <span className="chip-face">{value}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
       {label && <div className="chip-stack-amount">${amount}</div>}
     </div>
   )

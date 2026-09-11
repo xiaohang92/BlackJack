@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import { recommendedBet } from './engine/betSizing'
 import { remainingDecksRounded, trueCount } from './engine/hiLo'
 import { cardsRemaining } from './engine/shoe'
@@ -120,7 +120,7 @@ export default function App() {
     setTrainer({ tableMood: 'play' })
   }
 
-  const handleTourTarget = (target: string | undefined) => {
+  const handleTourTarget = useCallback((target: string | undefined) => {
     const tab = tabForTourTarget(target)
     if (tab) {
       setRailTab(tab)
@@ -136,7 +136,7 @@ export default function App() {
     if (target === 'cheat-sheet' || target === 'notes-btn') {
       setTrainer({ cheatSheetOpen: true })
     }
-  }
+  }, [setTrainer])
 
   const beginDeal = () => {
     unlockAudio()
@@ -580,7 +580,7 @@ export default function App() {
           />
           <div className={`message${settleTone ? ` is-${settleTone}` : ''}`}>
             {settled && settleTone
-              ? `${resultTitle(settleTone)} ${formatNet(settleNet)}`
+              ? resultTitle(settleTone)
               : game.lastMessage}
           </div>
           <div className="kbd-hint">

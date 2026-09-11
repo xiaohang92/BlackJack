@@ -33,8 +33,17 @@ export function BettingBar({
   onRebet,
   showRecommended = true,
 }: Props) {
+  const canDeal = !disabled && bet >= minBet && bet <= bankroll
+
   return (
-    <div className="bet-row" data-tour="betting">
+    <form
+      className="bet-row"
+      data-tour="betting"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (canDeal) onDeal()
+      }}
+    >
       <div className="chip-tray" role="group" aria-label="Chips">
         {CHIPS.map((c) => (
           <button
@@ -45,7 +54,7 @@ export function BettingBar({
             onClick={() => onChip(c)}
             aria-label={`Add $${c}`}
           >
-            {c}
+            <span className="chip-face">{c}</span>
           </button>
         ))}
       </div>
@@ -85,26 +94,40 @@ export function BettingBar({
           </button>
         )}
       </div>
-      <div className="bet-amount-wrap">
-        <span className="bet-min-max">Min ${minBet}</span>
-        <input
-          type="number"
-          min={0}
-          max={bankroll}
-          value={bet}
-          disabled={disabled}
-          onChange={(e) => onBetChange(Number(e.target.value))}
-          aria-label="Bet amount"
-        />
+      <div className="bet-field">
+        <label htmlFor="bet-amount">Bet</label>
+        <span className="bet-field-value">
+          <span className="bet-field-prefix" aria-hidden="true">
+            $
+          </span>
+          <input
+            id="bet-amount"
+            name="bet"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            autoComplete="off"
+            enterKeyHint="go"
+            value={bet}
+            disabled={disabled}
+            onChange={(e) => {
+              const next = e.target.value.replace(/\D/g, '')
+              onBetChange(next === '' ? 0 : Number(next))
+            }}
+            aria-describedby="bet-min"
+          />
+        </span>
+        <span id="bet-min" className="visually-hidden">
+          Minimum ${minBet}
+        </span>
       </div>
       <button
-        type="button"
+        type="submit"
         className="btn btn-primary btn-deal"
-        disabled={disabled || bet < minBet || bet > bankroll}
-        onClick={onDeal}
+        disabled={!canDeal}
       >
         Deal
       </button>
-    </div>
+    </form>
   )
 }

@@ -26,7 +26,11 @@ export const useSettingsStore = create<SettingsState>()(
       setRules: (patch) =>
         set((s) => ({ rules: { ...s.rules, ...patch } })),
       setTrainer: (patch) =>
-        set((s) => ({ trainer: { ...s.trainer, ...patch } })),
+        set((s) => {
+          const keys = Object.keys(patch) as (keyof TrainerSettings)[]
+          if (keys.every((k) => s.trainer[k] === patch[k])) return s
+          return { trainer: { ...s.trainer, ...patch } }
+        }),
       resetRules: () => set({ rules: VEGAS_DEFAULTS }),
       setTourCompleted: (done) => set({ tourCompleted: done }),
     }),
